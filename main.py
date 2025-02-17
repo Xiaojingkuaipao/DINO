@@ -37,7 +37,9 @@ def get_args_parser():
     parser.add_argument('--dataset_file', default='coco')
     parser.add_argument('--coco_path', type=str, default='/comp_robot/cv_public_dataset/COCO2017/')
     parser.add_argument('--coco_panoptic_path', type=str)
+    # 移除标注为“困难”的样本
     parser.add_argument('--remove_difficult', action='store_true')
+    # 将图像输入固定为统一尺寸
     parser.add_argument('--fix_size', action='store_true')
 
     # training parameters
@@ -50,18 +52,24 @@ def get_args_parser():
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--resume', default='', help='resume from checkpoint')
     parser.add_argument('--pretrain_model_path', help='load from other checkpoint')
+    # 指定在微调时忽略的层
     parser.add_argument('--finetune_ignore', type=str, nargs='+')
+    # 起始 epoch 编号，用于断点续训。
     parser.add_argument('--start_epoch', default=0, type=int, metavar='N',
                         help='start epoch')
+    # 是否进入评估模式（不训练，仅评估模型性能）
     parser.add_argument('--eval', action='store_true')
+    # dataloader的num_workers
     parser.add_argument('--num_workers', default=10, type=int)
     parser.add_argument('--test', action='store_true')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--find_unused_params', action='store_true')
 
     parser.add_argument('--save_results', action='store_true')
+    # store_true表示在命令行中输入这个参数就表示他取值为true，否则取为false, store_false以此类推
     parser.add_argument('--save_log', action='store_true')
 
+    # 分布式训练参数，可以先不看
     # distributed training parameters
     parser.add_argument('--world_size', default=1, type=int,
                         help='number of distributed processes')
@@ -90,12 +98,18 @@ def main(args):
     time.sleep(args.rank * 0.02)
     cfg = SLConfig.fromfile(args.config_file)
     if args.options is not None:
+        # {'dn_bbox_coef': 1.0, 'dn_box_noise_scale': 1.0, 'dn_label_coef': 1.0, 'dn_scalar': 100, 'embed_init_tgt': True, 'use_ema': False}
+        # 获取从命令行中得到的配置参数
         cfg.merge_from_dict(args.options)
-    if args.rank == 0:
+    if args.rank == 0: # 非分布式运行，或者此机器为主机器
+        # config保存路径
         save_cfg_path = os.path.join(args.output_dir, "config_cfg.py")
+        # 写入config_cfg.py
         cfg.dump(save_cfg_path)
+        # 将args写入config_args_raw.json
         save_json_path = os.path.join(args.output_dir, "config_args_raw.json")
         with open(save_json_path, 'w') as f:
+            # 将args写入config_args_raw.json文件，缩进为2
             json.dump(vars(args), f, indent=2)
     cfg_dict = cfg._cfg_dict.to_dict()
     args_vars = vars(args)
