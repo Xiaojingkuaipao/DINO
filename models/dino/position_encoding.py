@@ -59,6 +59,7 @@ class PositionEmbeddingSine(nn.Module):
         pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
         return pos
 
+# 专门为图像任务 设计的 二维正弦位置编码
 class PositionEmbeddingSineHW(nn.Module):
     """
     This is a more standard version of the position embedding, very similar to the one
@@ -66,8 +67,8 @@ class PositionEmbeddingSineHW(nn.Module):
     """
     def __init__(self, num_pos_feats=64, temperatureH=10000, temperatureW=10000, normalize=False, scale=None):
         super().__init__()
-        self.num_pos_feats = num_pos_feats
-        self.temperatureH = temperatureH
+        self.num_pos_feats = num_pos_feats # 位置编码的维度
+        self.temperatureH = temperatureH # H 方向的位置编码缩放参数（影响 sin/cos 的频率）频率高更关注局部信息，频率低更关注的是整体信息
         self.temperatureW = temperatureW
         self.normalize = normalize
         if scale is not None and normalize is False:
@@ -77,18 +78,25 @@ class PositionEmbeddingSineHW(nn.Module):
         self.scale = scale
 
     def forward(self, tensor_list: NestedTensor):
-        x = tensor_list.tensors
-        mask = tensor_list.mask
+        x = tensor_list.tensors # 填充后的Batch特征图[B, C, H, W]
+        mask = tensor_list.mask # padding mask [B, H, W]
         assert mask is not None
-        not_mask = ~mask
+        not_mask = ~mask # 取反，标记非 padding 部分
+        # 计算H方向的累加和
         y_embed = not_mask.cumsum(1, dtype=torch.float32)
+        # 计算W方向的累加和
         x_embed = not_mask.cumsum(2, dtype=torch.float32)
+        # 从累加和中可以得到在没有padding之前的图片的HW信息
 
 
-
+        # 归一化处理
+        # 这样就把所有H方向和W方向有效的索引缩放在[0, 1]之间，然后*self.scale也就是2pi
+        # 符合sin/cos函数的输入范围，padding部分则还是0，不参与位置编码
         if self.normalize:
             eps = 1e-6
+            # 取 H 方向的最大值进行归一化， 最后一行
             y_embed = y_embed / (y_embed[:, -1:, :] + eps) * self.scale
+            # 取 W 方向的最大值进行归一化， 最后一列
             x_embed = x_embed / (x_embed[:, :, -1:] + eps) * self.scale
 
         dim_tx = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
@@ -136,6 +144,7 @@ class PositionEmbeddingLearned(nn.Module):
 
 
 def build_position_encoding(args):
+    # 计算位置编码维度,这里使用sin/cos位置编码，是 Transformer 隐藏维度的一半
     N_steps = args.hidden_dim // 2
     if args.position_embedding in ('v2', 'sine'):
         # TODO find a better way of exposing other arguments

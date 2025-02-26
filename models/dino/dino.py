@@ -101,7 +101,7 @@ class DINO(nn.Module):
                 in_channels = backbone.num_channels[_]
                 input_proj_list.append(nn.Sequential(
                     nn.Conv2d(in_channels, hidden_dim, kernel_size=1),
-                    nn.GroupNorm(32, hidden_dim),
+                    nn.GroupNorm(32, hidden_dim), # 每个样本通道分为32组，一共hidden_dim个通道，一个组有hidden_dim/32个通道
                 ))
             for _ in range(num_feature_levels - num_backbone_outs):
                 input_proj_list.append(nn.Sequential(
@@ -109,7 +109,7 @@ class DINO(nn.Module):
                     nn.GroupNorm(32, hidden_dim),
                 ))
                 in_channels = hidden_dim
-            self.input_proj = nn.ModuleList(input_proj_list)
+            self.input_proj = nn.ModuleList(input_proj_list)  # 把输入特征图转成了256个通道并在最后加上kernel=3，stride=2的映射
         else:
             assert two_stage_type == 'no', "two_stage_type should be no if num_feature_levels=1 !!!"
             self.input_proj = nn.ModuleList([
@@ -148,7 +148,7 @@ class DINO(nn.Module):
             class_embed_layerlist = [copy.deepcopy(_class_embed) for i in range(transformer.num_decoder_layers)]
         self.bbox_embed = nn.ModuleList(box_embed_layerlist)
         self.class_embed = nn.ModuleList(class_embed_layerlist)
-        self.transformer.decoder.bbox_embed = self.bbox_embed
+        self.transformer.decoder.bbox_embed = self.bbox_embed      # 源码init函数中这两个属性都设置成了None,在这里进行了定义
         self.transformer.decoder.class_embed = self.class_embed
 
         # two stage
@@ -156,17 +156,17 @@ class DINO(nn.Module):
         self.two_stage_add_query_num = two_stage_add_query_num
         assert two_stage_type in ['no', 'standard'], "unknown param {} of two_stage_type".format(two_stage_type)
         if two_stage_type != 'no':
-            if two_stage_bbox_embed_share:
+            if two_stage_bbox_embed_share: # 不共享参数
                 assert dec_pred_class_embed_share and dec_pred_bbox_embed_share
                 self.transformer.enc_out_bbox_embed = _bbox_embed
             else:
-                self.transformer.enc_out_bbox_embed = copy.deepcopy(_bbox_embed)
+                self.transformer.enc_out_bbox_embed = copy.deepcopy(_bbox_embed)  # init函数中这里设置成了None,在这里手动设置
     
             if two_stage_class_embed_share:
                 assert dec_pred_class_embed_share and dec_pred_bbox_embed_share
                 self.transformer.enc_out_class_embed = _class_embed
             else:
-                self.transformer.enc_out_class_embed = copy.deepcopy(_class_embed)
+                self.transformer.enc_out_class_embed = copy.deepcopy(_class_embed) # init函数中这里设置成了None,在这里手动设置
     
             self.refpoint_embed = None
             if self.two_stage_add_query_num > 0:
@@ -690,6 +690,10 @@ class PostProcess(nn.Module):
 
 @MODULE_BUILD_FUNCS.registe_with_name(module_name='dino')
 def build_dino(args):
+    '''
+    这里的注释是在解释说num_classes的取值的原因
+    要取值为类别编号最大的编号 + 1（背景类）
+    '''
     # the `num_classes` naming here is somewhat misleading.
     # it indeed corresponds to `max_obj_id + 1`, where max_obj_id
     # is the maximum id for a class in your dataset. For example,
@@ -710,6 +714,7 @@ def build_dino(args):
     num_classes = args.num_classes
     device = torch.device(args.device)
 
+    # 一个Joiner实例，用于前向过程中返回output和对应的pos
     backbone = build_backbone(args)
 
     transformer = build_deformable_transformer(args)
@@ -735,7 +740,7 @@ def build_dino(args):
         transformer,
         num_classes=num_classes,
         num_queries=args.num_queries,
-        aux_loss=True,
+        aux_loss=True, # 辅助损失
         iter_update=True,
         query_dim=4,
         random_refpoints_xy=args.random_refpoints_xy,
@@ -758,12 +763,12 @@ def build_dino(args):
     )
     if args.masks:
         model = DETRsegm(model, freeze_detr=(args.frozen_weights is not None))
-    matcher = build_matcher(args)
+    matcher = build_matcher(args) # 继承自nn.Module但是没有能训练的参数，匈牙利二分图匹配
 
-    # prepare weight dict
-    weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef}
+    # prepare weight dict, 损失用字典表示
+    weight_dict = {'loss_ce': args.cls_loss_coef, 'loss_bbox': args.bbox_loss_coef}  # 总的损失权重字典
     weight_dict['loss_giou'] = args.giou_loss_coef
-    clean_weight_dict_wo_dn = copy.deepcopy(weight_dict)
+    clean_weight_dict_wo_dn = copy.deepcopy(weight_dict) # 没有dn权重的clean损失权重字典
 
     
     # for DN training
@@ -775,16 +780,16 @@ def build_dino(args):
     if args.masks:
         weight_dict["loss_mask"] = args.mask_loss_coef
         weight_dict["loss_dice"] = args.dice_loss_coef
-    clean_weight_dict = copy.deepcopy(weight_dict)
+    clean_weight_dict = copy.deepcopy(weight_dict) # 有dn的clean损失权重字典
 
     # TODO this is a hack
-    if args.aux_loss:
+    if args.aux_loss: # 使用辅助损失, 每层都有一个预测头，计算每层预测出来的损失
         aux_weight_dict = {}
-        for i in range(args.dec_layers - 1):
+        for i in range(args.dec_layers - 1): # 最后一层不是辅助损失
             aux_weight_dict.update({k + f'_{i}': v for k, v in clean_weight_dict.items()})
         weight_dict.update(aux_weight_dict)
 
-    if args.two_stage_type != 'no':
+    if args.two_stage_type != 'no': # 如果启用two_stage
         interm_weight_dict = {}
         try:
             no_interm_box_loss = args.no_interm_box_loss
@@ -799,9 +804,10 @@ def build_dino(args):
             interm_loss_coef = args.interm_loss_coef
         except:
             interm_loss_coef = 1.0
+        # 中间损失没有dn，只有纯净的分类损失，目标框回归损失以及giou损失
         interm_weight_dict.update({k + f'_interm': v * interm_loss_coef * _coeff_weight_dict[k] for k, v in clean_weight_dict_wo_dn.items()})
-        weight_dict.update(interm_weight_dict)
-
+        weight_dict.update(interm_weight_dict) # cls损失，bbox损失，giou损失，dn损失，5层aux损失以及interm损失
+    # 标签损失，目标框回归损失， 基数损失(约束预测的目标数量，它衡量模型预测的目标数量和真实目标数量之间的差异)
     losses = ['labels', 'boxes', 'cardinality']
     if args.masks:
         losses += ["masks"]
@@ -815,5 +821,5 @@ def build_dino(args):
         if args.dataset_file == "coco_panoptic":
             is_thing_map = {i: i <= 90 for i in range(201)}
             postprocessors["panoptic"] = PostProcessPanoptic(is_thing_map, threshold=0.85)
-
+        # 模型    损失函数    后处理器
     return model, criterion, postprocessors

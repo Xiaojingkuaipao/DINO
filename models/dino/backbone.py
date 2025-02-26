@@ -34,6 +34,7 @@ from .swin_transformer import build_swin_transformer
 
 
 class FrozenBatchNorm2d(torch.nn.Module):
+    # 除了resnet[18, 34, 50, 101]都会出现NaN的问题，这里加上了eps防止此现象的发生
     """
     BatchNorm2d where the batch statistics and the affine parameters are fixed.
 
@@ -76,6 +77,9 @@ class BackboneBase(nn.Module):
 
     def __init__(self, backbone: nn.Module, train_backbone: bool, num_channels: int, return_interm_indices: list):
         super().__init__()
+        # 遍历backbone中的参数，如果train_backbone为false，冻结所有参数
+        # 如果train_backbone为true，就冻结layer2，3，4之外的层的参数，只让backbone的2，3，4层做更新
+        # 通常不需要对低级特征进行微调，冻结它们可以减少计算量，加快训练速度
         for name, parameter in backbone.named_parameters():
             if not train_backbone or 'layer2' not in name and 'layer3' not in name and 'layer4' not in name:
                 parameter.requires_grad_(False)
@@ -91,10 +95,13 @@ class BackboneBase(nn.Module):
         #         return_layers = {"layer2": "0", "layer3": "1", "layer4": "2"}
         # else:
         #     return_layers = {'layer4': "0"}
+
+        # 提取特定层输出的工具类IntermediateLayerGetter
         self.body = IntermediateLayerGetter(backbone, return_layers=return_layers)
         self.num_channels = num_channels
 
     def forward(self, tensor_list: NestedTensor):
+        # xs是对应的取出来的特征图，字典形式
         xs = self.body(tensor_list.tensors)
         out: Dict[str, NestedTensor] = {}
         for name, x in xs.items():
@@ -133,6 +140,7 @@ class Joiner(nn.Sequential):
         super().__init__(backbone, position_embedding)
 
     def forward(self, tensor_list: NestedTensor):
+        # 调用backbone
         xs = self[0](tensor_list)
         out: List[NestedTensor] = []
         pos = []
@@ -212,8 +220,11 @@ def build_backbone(args):
 
     assert len(bb_num_channels) == len(return_interm_indices), f"len(bb_num_channels) {len(bb_num_channels)} != len(return_interm_indices) {len(return_interm_indices)}"
 
-
+    # 继承自nn.Sequential()，执行一次前向就把特征图和位置编码做好了，joiner就是把位置编码和特征图绑定在一起的
+    # out, pos = model(tensor_list)
+    # 返回特征图以及位置编码，有两个返回值
     model = Joiner(backbone, position_embedding)
-    model.num_channels = bb_num_channels 
+    # 动态添加属性，直接在Joiner的实例model中添加num_channels属性，resnet50[512, 1024, 2048]
+    model.num_channels = bb_num_channels
     assert isinstance(bb_num_channels, List), "bb_num_channels is expected to be a List but {}".format(type(bb_num_channels))
     return model

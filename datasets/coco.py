@@ -453,7 +453,7 @@ class ConvertCocoPolysToMask(object):
 
 def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None):
 
-    normalize = T.Compose([
+    normalize = T.Compose([ # 标准化
         T.ToTensor(),
         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
     ])
@@ -520,16 +520,16 @@ def make_coco_transforms(image_set, fix_size=False, strong_aug=False, args=None)
             ])
         
         return T.Compose([
-            T.RandomHorizontalFlip(),
-            T.RandomSelect(
-                T.RandomResize(scales, max_size=max_size),
+            T.RandomHorizontalFlip(), # 水平翻转
+            T.RandomSelect( # 随机选择参数中的transform
+                T.RandomResize(scales, max_size=max_size), # 随机Resize
                 T.Compose([
-                    T.RandomResize(scales2_resize),
-                    T.RandomSizeCrop(*scales2_crop),
-                    T.RandomResize(scales, max_size=max_size),
+                    T.RandomResize(scales2_resize), # 再次随机Resize
+                    T.RandomSizeCrop(*scales2_crop), # 随机裁剪
+                    T.RandomResize(scales, max_size=max_size), # 再次随机Resize
                 ])
             ),
-            normalize,
+            normalize, # 做标准化
         ])
 
     if image_set in ['val', 'eval_debug', 'train_reg', 'test']:
@@ -620,7 +620,7 @@ def build(image_set, args):
         "test": (root / "test2017", root / "annotations" / 'image_info_test-dev2017.json' ),
     }
 
-    # add some hooks to datasets
+    # add some hooks to datasets 在这个模型中没有加hook
     aux_target_hacks_list = get_aux_target_hacks_list(image_set, args)
     img_folder, ann_file = PATHS[image_set]
 

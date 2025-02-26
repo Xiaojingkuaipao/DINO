@@ -37,17 +37,17 @@ class SmoothedValue(object):
     def __init__(self, window_size=20, fmt=None):
         if fmt is None:
             fmt = "{median:.4f} ({global_avg:.4f})"
-        self.deque = deque(maxlen=window_size)
+        self.deque = deque(maxlen=window_size)  # 滑动窗口的值
         self.total = 0.0
         self.count = 0
         self.fmt = fmt
 
     def update(self, value, n=1):
-        self.deque.append(value)
-        self.count += n
-        self.total += value * n
+        self.deque.append(value) # 更新滑动窗口的值
+        self.count += n # 更新总数
+        self.total += value * n # 更新总和
 
-    def synchronize_between_processes(self):
+    def synchronize_between_processes(self): # 在多 GPU 训练时同步 count 和 total，确保所有进程共享相同的统计数据
         """
         Warning: does not synchronize the deque!
         """
@@ -165,8 +165,8 @@ def reduce_dict(input_dict, average=True):
 
 class MetricLogger(object):
     def __init__(self, delimiter="\t"):
-        self.meters = defaultdict(SmoothedValue)
-        self.delimiter = delimiter
+        self.meters = defaultdict(SmoothedValue) # 存储多个平滑指标
+        self.delimiter = delimiter # 日志分隔符
 
     def update(self, **kwargs):
         for k, v in kwargs.items():

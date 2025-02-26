@@ -21,7 +21,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, max_norm: float = 0, 
                     wo_class_error=False, lr_scheduler=None, args=None, logger=None, ema_m=None):
-    scaler = torch.cuda.amp.GradScaler(enabled=args.amp)
+    scaler = torch.cuda.amp.GradScaler(enabled=args.amp) # 自动混合精度，这里不启用
 
     try:
         need_tgt_for_training = args.use_dn

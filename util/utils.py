@@ -397,11 +397,11 @@ class ModelEma(torch.nn.Module):
 
 class BestMetricSingle():
     def __init__(self, init_res=0.0, better='large') -> None:
-        self.init_res = init_res
-        self.best_res = init_res
-        self.best_ep = -1
+        self.init_res = init_res # 初始指标值，默认为0
+        self.best_res = init_res # 最佳指标值
+        self.best_ep = -1 # 最优epoch
 
-        self.better = better
+        self.better = better # 越大越好还是越小越好
         assert better in ['large', 'small']
 
     def isbetter(self, new_res, old_res):
@@ -434,9 +434,9 @@ class BestMetricHolder():
     def __init__(self, init_res=0.0, better='large', use_ema=False) -> None:
         self.best_all = BestMetricSingle(init_res, better)
         self.use_ema = use_ema
-        if use_ema:
-            self.best_ema = BestMetricSingle(init_res, better)
-            self.best_regular = BestMetricSingle(init_res, better)
+        if use_ema: # 如果使用了ema
+            self.best_ema = BestMetricSingle(init_res, better) # 存储ema版本的最佳值
+            self.best_regular = BestMetricSingle(init_res, better) # 存储普通版本的最佳值
     
 
     def update(self, new_res, epoch, is_ema=False):

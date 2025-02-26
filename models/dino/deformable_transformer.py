@@ -30,10 +30,10 @@ class DeformableTransformer(nn.Module):
                  num_unicoder_layers=0,
                  num_decoder_layers=6, 
                  dim_feedforward=2048, dropout=0.0,
-                 activation="relu", normalize_before=False,
-                 return_intermediate_dec=False, query_dim=4,
+                 activation="relu", normalize_before=False, # 是否在attention计算前做layer_norm
+                 return_intermediate_dec=False, query_dim=4, # 是否返回 Decoder 每层的中间结果
                  num_patterns=0,
-                 modulate_hw_attn=False,
+                 modulate_hw_attn=False, # 是否让 Query 控制 h, w 的注意力机制
                  # for deformable encoder
                  deformable_encoder=False,
                  deformable_decoder=False,
@@ -43,33 +43,33 @@ class DeformableTransformer(nn.Module):
                  use_deformable_box_attn=False,
                  box_attn_type='roi_align',
                  # init query
-                 learnable_tgt_init=False,
-                 decoder_query_perturber=None,
-                 add_channel_attention=False,
-                 add_pos_value=False,
-                 random_refpoints_xy=False,
+                 learnable_tgt_init=False, # 是否让query自行学习初始值
+                 decoder_query_perturber=None,# Decoder中query的扰动
+                 add_channel_attention=False,# 是否加入通道注意力
+                 add_pos_value=False, # 位置编码是否影响value
+                 random_refpoints_xy=False, # 是否机初始化参考点
                  # two stage
                  two_stage_type='no', # ['no', 'standard', 'early', 'combine', 'enceachlayer', 'enclayer1']
-                 two_stage_pat_embed=0,
-                 two_stage_add_query_num=0,
-                 two_stage_learn_wh=False,
-                 two_stage_keep_all_tokens=False,
+                 two_stage_pat_embed=0,# Two-Stage 模式下的额外 Query
+                 two_stage_add_query_num=0,# Two-Stage 额外 Query 数
+                 two_stage_learn_wh=False,# Two-Stage 目标框宽高，是否让 Proposal 直接学习 w, h，而不是从 Encoder 预测
+                 two_stage_keep_all_tokens=False,# 是否保留所有proposal
                  # evo of #anchors
                  dec_layer_number=None,
-                 rm_enc_query_scale=True,
-                 rm_dec_query_scale=True,
-                 rm_self_attn_layers=None,
-                 key_aware_type=None,
+                 rm_enc_query_scale=True, # 是否去掉encoder层的query的scale归一化
+                 rm_dec_query_scale=True,# 是否去掉decoder层的query的scale归一化
+                 rm_self_attn_layers=None,# 是否去掉部分 Self-Attention 层
+                 key_aware_type=None,# 关键点感知方式	是否让 Query 学习 额外的 Key 信息
                  # layer share
-                 layer_share_type=None,
+                 layer_share_type=None, #是否在 Encoder 或 Decoder 层里 共享权重
                  # for detach
-                 rm_detach=None,
-                 decoder_sa_type='ca', 
+                 rm_detach=None, # 是否在训练时 Detach 部分特征
+                 decoder_sa_type='ca',  # Decoder Self-Attention 类型
                  module_seq=['sa', 'ca', 'ffn'],
                  # for dn
                  embed_init_tgt=False,
 
-                 use_detached_boxes_dec_out=False,
+                 use_detached_boxes_dec_out=False,# 是否在 Decoder输出时Detach目标框，防止梯度干扰
                  ):
         super().__init__()
         self.num_feature_levels = num_feature_levels
@@ -123,11 +123,13 @@ class DeformableTransformer(nn.Module):
         # choose decoder layer type
         if deformable_decoder:
             decoder_layer = DeformableTransformerDecoderLayer(d_model, dim_feedforward,
-                                                          dropout, activation,
-                                                          num_feature_levels, nhead, dec_n_points, use_deformable_box_attn=use_deformable_box_attn, box_attn_type=box_attn_type,
-                                                          key_aware_type=key_aware_type,
-                                                          decoder_sa_type=decoder_sa_type,
-                                                          module_seq=module_seq)
+                                                              dropout, activation,
+                                                              num_feature_levels, nhead, dec_n_points,
+                                                              use_deformable_box_attn=use_deformable_box_attn,
+                                                              box_attn_type=box_attn_type,
+                                                              key_aware_type=key_aware_type,
+                                                              decoder_sa_type=decoder_sa_type,
+                                                              module_seq=module_seq)
 
         else:
             raise NotImplementedError
@@ -153,7 +155,7 @@ class DeformableTransformer(nn.Module):
         if not isinstance(num_patterns, int):
             Warning("num_patterns should be int but {}".format(type(num_patterns)))
             self.num_patterns = 0
-
+        # 对不同尺度（feature levels）编码额外信息，帮助模型区分不同特征层的来源
         if num_feature_levels > 1:
             if self.num_encoder_layers > 0:
                 self.level_embed = nn.Parameter(torch.Tensor(num_feature_levels, d_model))
@@ -164,14 +166,14 @@ class DeformableTransformer(nn.Module):
         assert learnable_tgt_init, "why not learnable_tgt_init"
         self.embed_init_tgt = embed_init_tgt
         if (two_stage_type != 'no' and embed_init_tgt) or (two_stage_type == 'no'):
-            self.tgt_embed = nn.Embedding(self.num_queries, d_model)
+            self.tgt_embed = nn.Embedding(self.num_queries, d_model) # 可学习的嵌入查询，把query映射为256维
             nn.init.normal_(self.tgt_embed.weight.data)
         else:
             self.tgt_embed = None
             
         # for two stage
         self.two_stage_type = two_stage_type
-        self.two_stage_pat_embed = two_stage_pat_embed
+        self.two_stage_pat_embed = two_stage_pat_embed # two_stage模式下额外的query
         self.two_stage_add_query_num = two_stage_add_query_num
         self.two_stage_learn_wh = two_stage_learn_wh
         assert two_stage_type in ['no', 'standard'], "unknown param {} of two_stage_type".format(two_stage_type)
@@ -846,9 +848,11 @@ class DeformableTransformerDecoderLayer(nn.Module):
         self.norm2 = nn.LayerNorm(d_model)
 
         # ffn
+        # 把模型维度转换为ffn的维度
         self.linear1 = nn.Linear(d_model, d_ffn)
         self.activation = _get_activation_fn(activation, d_model=d_ffn, batch_dim=1)
         self.dropout3 = nn.Dropout(dropout)
+        # 把ffn的维度转换回d_model
         self.linear2 = nn.Linear(d_ffn, d_model)
         self.dropout4 = nn.Dropout(dropout)
         self.norm3 = nn.LayerNorm(d_model)
@@ -1002,6 +1006,7 @@ def _get_clones(module, N, layer_share=False):
 
 
 def build_deformable_transformer(args):
+    #
     decoder_query_perturber = None
     if args.decoder_layer_noise:
         from .utils import RandomBoxPerturber
@@ -1044,6 +1049,7 @@ def build_deformable_transformer(args):
 
         add_channel_attention=args.add_channel_attention,
         add_pos_value=args.add_pos_value,
+        # 随机初始化参考点(x,y)坐标
         random_refpoints_xy=args.random_refpoints_xy,
 
         # two stage

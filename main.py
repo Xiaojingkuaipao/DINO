@@ -87,6 +87,7 @@ def build_model_main(args):
     # we use register to maintain models from catdet6 on.
     from models.registry import MODULE_BUILD_FUNCS
     assert args.modelname in MODULE_BUILD_FUNCS._module_dict
+    # 取出对应的模型构建函数
     build_func = MODULE_BUILD_FUNCS.get(args.modelname)
     model, criterion, postprocessors = build_func(args)
     return model, criterion, postprocessors
@@ -106,13 +107,17 @@ def main(args):
         save_cfg_path = os.path.join(args.output_dir, "config_cfg.py")
         # 写入config_cfg.py
         cfg.dump(save_cfg_path)
-        # 将args写入config_args_raw.json
+        # 将args写入config_args_raw.json，没合并cfg之前的args
         save_json_path = os.path.join(args.output_dir, "config_args_raw.json")
         with open(save_json_path, 'w') as f:
             # 将args写入config_args_raw.json文件，缩进为2
+            # vars(args)返回一个字典，键是属性名，值是属性值
             json.dump(vars(args), f, indent=2)
+    # cfg的dict
     cfg_dict = cfg._cfg_dict.to_dict()
+    # args的dict
     args_vars = vars(args)
+    # 将cfg合并到args里面，如果有重复的键则会出现冲突，抛出ValueError
     for k,v in cfg_dict.items():
         if k not in args_vars:
             setattr(args, k, v)
@@ -127,14 +132,17 @@ def main(args):
 
     # setup logger
     os.makedirs(args.output_dir, exist_ok=True)
+    # 分布式训练的时候只让主进程打印日志，从进程不打印，日志名称
     logger = setup_logger(output=os.path.join(args.output_dir, 'info.txt'), distributed_rank=args.rank, color=False, name="detr")
     logger.info("git:\n  {}\n".format(utils.get_sha()))
+    # sys.argv 是当前命令行运行时的所有参数，这行代码会把整个命令打印到日志里
     logger.info("Command: "+' '.join(sys.argv))
     if args.rank == 0:
         save_json_path = os.path.join(args.output_dir, "config_args_all.json")
         with open(save_json_path, 'w') as f:
             json.dump(vars(args), f, indent=2)
         logger.info("Full config saved to {}".format(save_json_path))
+    # 打印一些信息
     logger.info('world size: {}'.format(args.world_size))
     logger.info('rank: {}'.format(args.rank))
     logger.info('local_rank: {}'.format(args.local_rank))
@@ -147,6 +155,7 @@ def main(args):
 
     device = torch.device(args.device)
 
+    # 设置随机种子，不同GPU的随机性种子要不一样，否则数据采样顺序以及增强等操作很近似，则不利于模型训练
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
@@ -168,11 +177,11 @@ def main(args):
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=args.find_unused_params)
         model_without_ddp = model.module
-    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    logger.info('number of params:'+str(n_parameters))
-    logger.info("params:\n"+json.dumps({n: p.numel() for n, p in model.named_parameters() if p.requires_grad}, indent=2))
+    n_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad) # 能求梯度的参数的数量
+    logger.info('number of params:'+str(n_parameters)) # 打印模型参数数量
+    logger.info("params:\n"+json.dumps({n: p.numel() for n, p in model.named_parameters() if p.requires_grad}, indent=2)) # 打印模型每层参数的数量
 
-    param_dicts = get_param_dict(args, model_without_ddp)
+    param_dicts = get_param_dict(args, model_without_ddp) # 参数字典，backbone的学习率比后面的transformer小10倍
 
     optimizer = torch.optim.AdamW(param_dicts, lr=args.lr,
                                   weight_decay=args.weight_decay)
@@ -185,8 +194,8 @@ def main(args):
         sampler_train = DistributedSampler(dataset_train)
         sampler_val = DistributedSampler(dataset_val, shuffle=False)
     else:
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-        sampler_val = torch.utils.data.SequentialSampler(dataset_val)
+        sampler_train = torch.utils.data.RandomSampler(dataset_train) # 随机采样数据集中的样本索引，让每次训练时数据顺序不同，防止过拟合
+        sampler_val = torch.utils.data.SequentialSampler(dataset_val) # 顺序采样数据集，因为是验证机，不需要打乱
 
     batch_sampler_train = torch.utils.data.BatchSampler(
         sampler_train, args.batch_size, drop_last=True)
@@ -195,7 +204,7 @@ def main(args):
                                    collate_fn=utils.collate_fn, num_workers=args.num_workers)
     data_loader_val = DataLoader(dataset_val, 1, sampler=sampler_val,
                                  drop_last=False, collate_fn=utils.collate_fn, num_workers=args.num_workers)
-
+    # 设置学习率调节器，这里使用最简单的过11个epoch学习率就衰减
     if args.onecyclelr:
         lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.lr, steps_per_epoch=len(data_loader_train), epochs=args.epochs, pct_start=0.2)
     elif args.multi_step_lr:
@@ -216,7 +225,7 @@ def main(args):
         model_without_ddp.detr.load_state_dict(checkpoint['model'])
 
     output_dir = Path(args.output_dir)
-    if os.path.exists(os.path.join(args.output_dir, 'checkpoint.pth')):
+    if os.path.exists(os.path.join(args.output_dir, 'checkpoint.pth')): # 断点续训， 在输出路径中保存checkpoints.pth文件
         args.resume = os.path.join(args.output_dir, 'checkpoint.pth')
     if args.resume:
         if args.resume.startswith('https'):
@@ -237,7 +246,7 @@ def main(args):
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
 
-    if (not args.resume) and args.pretrain_model_path:
+    if (not args.resume) and args.pretrain_model_path: # 断电续训
         checkpoint = torch.load(args.pretrain_model_path, map_location='cpu')['model']
         from collections import OrderedDict
         _ignorekeywordlist = args.finetune_ignore if args.finetune_ignore else []
@@ -280,7 +289,7 @@ def main(args):
 
     print("Start training")
     start_time = time.time()
-    best_map_holder = BestMetricHolder(use_ema=args.use_ema)
+    best_map_holder = BestMetricHolder(use_ema=args.use_ema) # 获取性能最好的模型的类的实例
     for epoch in range(args.start_epoch, args.epochs):
         epoch_start_time = time.time()
         if args.distributed:
