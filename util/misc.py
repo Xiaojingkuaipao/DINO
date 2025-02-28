@@ -292,6 +292,7 @@ def collate_fn(batch):
 
 def _max_by_axis(the_list):
     # type: (List[List[int]]) -> List[int]
+    # 输入的是一个列表，列表元素为list(int)为每个图片的形状，这批图片中最大的宽和最大的高返回回去，是一个列表
     maxes = the_list[0]
     for sublist in the_list[1:]:
         for index, item in enumerate(sublist):
@@ -395,6 +396,7 @@ def nested_tensor_from_tensor_list(tensor_list: List[Tensor]):
         tensor = torch.zeros(batch_shape, dtype=dtype, device=device)
         mask = torch.ones((b, h, w), dtype=torch.bool, device=device)
         for img, pad_img, m in zip(tensor_list, tensor, mask):
+            # 原地操作，直接把img的数据复制过来
             pad_img[: img.shape[0], : img.shape[1], : img.shape[2]].copy_(img)
             m[: img.shape[1], :img.shape[2]] = False
     else:

@@ -41,7 +41,7 @@ def train_one_epoch(model: torch.nn.Module, criterion: torch.nn.Module,
     for samples, targets in metric_logger.log_every(data_loader, print_freq, header, logger=logger):
 
         samples = samples.to(device)
-        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets] # List[dict]
 
         with torch.cuda.amp.autocast(enabled=args.amp):
             if need_tgt_for_training:

@@ -36,24 +36,24 @@ def prepare_for_cdn(dn_args, training, num_queries, num_classes, hidden_dim, lab
         known = [(torch.ones_like(t['labels'])).cuda() for t in targets]
         batch_size = len(known)
         known_num = [sum(k) for k in known]
-        if int(max(known_num)) == 0:
+        if int(max(known_num)) == 0: # 没有物体的话，dn=1
             dn_number = 1
         else:
-            if dn_number >= 100:
-                dn_number = dn_number // (int(max(known_num) * 2))
+            if dn_number >= 100: # 如果dn_number > 100，为了防止使用过多资源，要适当降低资源实用度
+                dn_number = dn_number // (int(max(known_num) * 2)) # 为什么？
             elif dn_number < 1:
                 dn_number = 1
         if dn_number == 0:
             dn_number = 1
         unmask_bbox = unmask_label = torch.cat(known)
-        labels = torch.cat([t['labels'] for t in targets])
-        boxes = torch.cat([t['boxes'] for t in targets])
-        batch_idx = torch.cat([torch.full_like(t['labels'].long(), i) for i, t in enumerate(targets)])
+        labels = torch.cat([t['labels'] for t in targets]) # 整个batch的label
+        boxes = torch.cat([t['boxes'] for t in targets]) # 整个batch的bbox
+        batch_idx = torch.cat([torch.full_like(t['labels'].long(), i) for i, t in enumerate(targets)]) # 生成batch_id，即每个label,bbox在batch中的位置
 
-        known_indice = torch.nonzero(unmask_label + unmask_bbox)
+        known_indice = torch.nonzero(unmask_label + unmask_bbox) # 返回输入tensor中非0元素的位置
         known_indice = known_indice.view(-1)
-
-        known_indice = known_indice.repeat(2 * dn_number, 1).view(-1)
+        # 在debug的第一个batch里面，batch_size=2, 第一张图片有10个框，第二张图片有9个框，一组有19个元素，共20组
+        known_indice = known_indice.repeat(2 * dn_number, 1).view(-1) # 2 * dn_number组
         known_labels = labels.repeat(2 * dn_number, 1).view(-1)
         known_bid = batch_idx.repeat(2 * dn_number, 1).view(-1)
         known_bboxs = boxes.repeat(2 * dn_number, 1)

@@ -1,5 +1,4 @@
 # %%
-from util.misc import NestedTensor
 import torch
 import torchvision.transforms as T
 from torch import nn
