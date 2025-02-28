@@ -37,10 +37,10 @@ class SmoothedValue(object):
     def __init__(self, window_size=20, fmt=None):
         if fmt is None:
             fmt = "{median:.4f} ({global_avg:.4f})"
-        self.deque = deque(maxlen=window_size)  # 滑动窗口的值
-        self.total = 0.0
-        self.count = 0
-        self.fmt = fmt
+        self.deque = deque(maxlen=window_size)  # 滑动窗口的值，维护这个滑动窗口，并计算扎个窗口中的中位数平均值以及全剧平均值等信息
+        self.total = 0.0 # 所有值的总和
+        self.count = 0 # 所有值的数量
+        self.fmt = fmt # 格式化字符串，用于输出统计量
 
     def update(self, value, n=1):
         self.deque.append(value) # 更新滑动窗口的值
@@ -165,7 +165,7 @@ def reduce_dict(input_dict, average=True):
 
 class MetricLogger(object):
     def __init__(self, delimiter="\t"):
-        self.meters = defaultdict(SmoothedValue) # 存储多个平滑指标
+        self.meters = defaultdict(SmoothedValue) # 存储多个平滑指标，每个指标是一个Smooth value对象
         self.delimiter = delimiter # 日志分隔符
 
     def update(self, **kwargs):
@@ -210,10 +210,11 @@ class MetricLogger(object):
         i = 0
         if not header:
             header = ''
-        start_time = time.time()
-        end = time.time()
-        iter_time = SmoothedValue(fmt='{avg:.4f}')
-        data_time = SmoothedValue(fmt='{avg:.4f}')
+        start_time = time.time() # 记录开始时间
+        end = time.time() # 记录当前时间
+        iter_time = SmoothedValue(fmt='{avg:.4f}') # 用于记录每次迭代的时间，并进行平滑处理，计算滑动窗口内的平均时间
+        data_time = SmoothedValue(fmt='{avg:.4f}')  # 跟踪数据加载的耗时，并计算滑动窗口内的平均时间
+        # 根据训练数据的总长度（len(iterable)），动态调整日志中迭代次数的显示格式，确保对齐
         space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
         if torch.cuda.is_available():
             log_msg = self.delimiter.join([
@@ -241,8 +242,8 @@ class MetricLogger(object):
 
             iter_time.update(time.time() - end)
             if i % print_freq == 0 or i == len(iterable) - 1:
-                eta_seconds = iter_time.global_avg * (len(iterable) - i)
-                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                eta_seconds = iter_time.global_avg * (len(iterable) - i) # 计算剩余时间
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds))) # 把秒数转换为易读格式的字符串
                 if torch.cuda.is_available():
                     print_func(log_msg.format(
                         i, len(iterable), eta=eta_string,
@@ -300,23 +301,26 @@ def _max_by_axis(the_list):
 
 class NestedTensor(object):
     def __init__(self, tensors, mask: Optional[Tensor]):
-        self.tensors = tensors
-        self.mask = mask
-        if mask == 'auto':
+        self.tensors = tensors # 图像张量
+        self.mask = mask # 掩码张量
+        if mask == 'auto': # 如果mask为auto则自动生成掩码
             self.mask = torch.zeros_like(tensors).to(tensors.device)
-            if self.mask.dim() == 3:
+            if self.mask.dim() == 3: # 对于单张图像[c, h, w]，对于0维求和并转换为bool
                 self.mask = self.mask.sum(0).to(bool)
-            elif self.mask.dim() == 4:
+            elif self.mask.dim() == 4: # 对于多张图像[b, c, h, w]，对于1维求和并转换为bool
                 self.mask = self.mask.sum(1).to(bool)
             else:
                 raise ValueError("tensors dim must be 3 or 4 but {}({})".format(self.tensors.dim(), self.tensors.shape))
 
     def imgsize(self):
-        res = []
+        """
+        计算每张图像有效区域的大小，去除填充部分后的高度和宽度
+        """
+        res = [] # 返回值
         for i in range(self.tensors.shape[0]):
-            mask = self.mask[i]
-            maxH = (~mask).sum(0).max()
-            maxW = (~mask).sum(1).max()
+            mask = self.mask[i] # 第i张图片的掩码， 掩码是三维的
+            maxH = (~mask).sum(0).max() # 每列的无效像素求和取最大值
+            maxW = (~mask).sum(1).max() # 每行的无效像素求和取最大值
             res.append(torch.Tensor([maxH, maxW]))
         return res
 
