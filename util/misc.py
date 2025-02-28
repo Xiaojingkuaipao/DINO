@@ -302,7 +302,7 @@ def _max_by_axis(the_list):
 class NestedTensor(object):
     def __init__(self, tensors, mask: Optional[Tensor]):
         self.tensors = tensors # 图像张量
-        self.mask = mask # 掩码张量
+        self.mask = mask # 掩码张量, padding区域为True，非Padding区域为false
         if mask == 'auto': # 如果mask为auto则自动生成掩码
             self.mask = torch.zeros_like(tensors).to(tensors.device)
             if self.mask.dim() == 3: # 对于单张图像[c, h, w]，对于0维求和并转换为bool
@@ -319,8 +319,9 @@ class NestedTensor(object):
         res = [] # 返回值
         for i in range(self.tensors.shape[0]):
             mask = self.mask[i] # 第i张图片的掩码， 掩码是三维的
-            maxH = (~mask).sum(0).max() # 每列的无效像素求和取最大值
-            maxW = (~mask).sum(1).max() # 每行的无效像素求和取最大值
+            # padding都是
+            maxH = (~mask).sum(0).max() # 每列的有效像素求和取最大值
+            maxW = (~mask).sum(1).max() # 每行的有效像素求和取最大值
             res.append(torch.Tensor([maxH, maxW]))
         return res
 
