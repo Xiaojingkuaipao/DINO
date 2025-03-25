@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
-  <component name="PublishConfigData" autoUpload="Always" serverName="root@region-42.seetacloud.com:50571 password (3)" remoteFilesAllowedToDisappearOnAutoupload="false">
+  <component name="PublishConfigData" autoUpload="Always" serverName="root@region-41.seetacloud.com:31224 password" remoteFilesAllowedToDisappearOnAutoupload="false">
     <serverData>
       <paths name="batchcom@219.152.187.40:30002 agent">
         <serverdata>
@@ -48,6 +48,20 @@
         <serverdata>
           <mappings>
             <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@connect.nmb1.seetacloud.com:16102 password">
+        <serverdata>
+          <mappings>
+            <mapping local="$PROJECT_DIR$" web="/" />
+          </mappings>
+        </serverdata>
+      </paths>
+      <paths name="root@region-41.seetacloud.com:31224 password">
+        <serverdata>
+          <mappings>
+            <mapping deploy="/root/autodl-tmp/DINO" local="$PROJECT_DIR$" />
           </mappings>
         </serverdata>
       </paths>

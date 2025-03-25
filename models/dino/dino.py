@@ -266,17 +266,27 @@ class DINO(nn.Module):
         else:
             assert targets is None
             input_query_bbox = input_query_label = attn_mask = dn_meta = None
-
+        # srcs: 多尺度特征图List[Tensor] 每个tensor[batch_size, d_model, H, W]
+        # mask: 图片填充的掩码，List[Tensor], 每个tensor[batch_size, H, W]
+        # input_query_bbox:[batch_size, dn_number(可以理解为每个样本的查询), 4]
+        # poss:多尺度特征图的掩码List[Tensor]，每个Tensor[batch_size, d_model, H, W]
+        # input_query_label:[batch_size, dn_number, d_model(256)]
+        # attn_mask:解码器的注意力掩码，用于控制query之间的可见性
         hs, reference, hs_enc, ref_enc, init_box_proposal = self.transformer(srcs, masks, input_query_bbox, poss,input_query_label,attn_mask)
+        # hs:[num_decoder_layers, batch_size, num_queries, d_model]解码器每一层的输出，用于后续分类和回归任务
+        # reference:[num_decoder_layer + 1, batch_size, num_queries, 4]解码器每一层的参考点坐标， 表示预测框的中心和尺寸
+        # hs_enc:[num_encoder_layer, batch_size, num_queries, d_model]解码器的中间输出，只在two_stage下有效
+        # ref_enc:[num_encoder_layer, batch_size, num_queries, 4]编码器的参考点坐标(仅在两阶段模式下有效)
+        # init_box_proposal:[batch_size, num_queries, 4]初始框提议，经过sigmoid归一化，用于后续优化
         # In case num object=0
-        hs[0] += self.label_enc.weight[0,0]*0.0
+        hs[0] += self.label_enc.weight[0,0]*0.0 # ？ 为什么
 
         # deformable-detr-like anchor update
         # reference_before_sigmoid = inverse_sigmoid(reference[:-1]) # n_dec, bs, nq, 4
         outputs_coord_list = []
         for dec_lid, (layer_ref_sig, layer_bbox_embed, layer_hs) in enumerate(zip(reference[:-1], self.bbox_embed, hs)):
-            layer_delta_unsig = layer_bbox_embed(layer_hs)
-            layer_outputs_unsig = layer_delta_unsig  + inverse_sigmoid(layer_ref_sig)
+            layer_delta_unsig = layer_bbox_embed(layer_hs) # 预测偏移值
+            layer_outputs_unsig = layer_delta_unsig  + inverse_sigmoid(layer_ref_sig) # 框加上偏移值，就是这个层预测的框
             layer_outputs_unsig = layer_outputs_unsig.sigmoid()
             outputs_coord_list.append(layer_outputs_unsig)
         outputs_coord_list = torch.stack(outputs_coord_list)        

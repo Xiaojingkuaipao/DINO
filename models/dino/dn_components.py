@@ -152,7 +152,7 @@ def dn_post_process(outputs_class, outputs_coord, dn_meta, aux_loss, _set_aux_lo
         output_known_coord = outputs_coord[:, :, :dn_meta['pad_size'], :]
         outputs_class = outputs_class[:, :, dn_meta['pad_size']:, :]
         outputs_coord = outputs_coord[:, :, dn_meta['pad_size']:, :]
-        out = {'pred_logits': output_known_class[-1], 'pred_boxes': output_known_coord[-1]}
+        out = {'pred_logits': output_known_class[-1], 'pred_boxes': output_known_coord[-1]} # 选最后一层
         if aux_loss:
             out['aux_outputs'] = _set_aux_loss(output_known_class, output_known_coord)
         dn_meta['output_known_lbs_bboxes'] = out
